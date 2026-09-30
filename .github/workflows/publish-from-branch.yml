@@ -1,0 +1,61 @@
+name: Publish from a branch
+
+# Publishing for sessions that can `git push` but have no `gh` or token (e.g. a
+# cloud Claude session): push a branch named publish/<app>/<version> whose tip
+# adds incoming/<app>.apk. This job runs the normal scripts/publish.sh with the
+# repo's own token, rebuilds the download page, and deletes the branch.
+#
+#   git checkout -b publish/bin-beacon/0.1.2 origin/main
+#   mkdir -p incoming && cp app-release.apk incoming/bin-beacon.apk
+#   git add -f incoming/bin-beacon.apk && git commit -m "publish bin-beacon 0.1.2"
+#   git push origin publish/bin-beacon/0.1.2
+#
+# Only people who can push to this repo can publish, same as publish.sh.
+
+on:
+  push:
+    branches: ["publish/**"]
+
+permissions:
+  contents: write   # create/edit the release, upload the asset, delete the branch
+  actions: write    # dispatch the page rebuild (a release made with GITHUB_TOKEN
+                    # does not fire release events, so index.yml would not run)
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse publish/<app>/<version>
+        id: ref
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#publish/}"
+          app="${rest%%/*}"
+          version="${rest#*/}"
+          [ "$version" = "$rest" ] && version=""
+          case "$app" in ""|*[!a-z0-9-]*) echo "bad app slug: '$app'" >&2; exit 1 ;; esac
+          case "$version" in *[!A-Za-z0-9.+-]*) echo "bad version: '$version'" >&2; exit 1 ;; esac
+          test -f "incoming/${app}.apk" || { echo "branch must add incoming/${app}.apk" >&2; exit 1; }
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.event.head_commit.message }}
+        run: bash scripts/publish.sh "${{ steps.ref.outputs.app }}" "incoming/${{ steps.ref.outputs.app }}.apk" "${{ steps.ref.outputs.version }}"
+
+      - name: Rebuild the download page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run index.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      - name: Delete the publish branch
+        if: always()
+        run: git push origin --delete "$GITHUB_REF_NAME" || true

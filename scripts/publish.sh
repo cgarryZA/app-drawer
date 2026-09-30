@@ -49,7 +49,12 @@ NOTES="Rolling release - the asset is replaced in place, so the download URL is 
 if [ -n "$VERSION" ]; then
   NOTES="Version ${VERSION}, built $(date -u +%Y-%m-%d). ${NOTES}"
 fi
-if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+# The source commit of the BUILD. When run from inside the app's own repo that
+# is HEAD; the publish-from-branch workflow runs inside app-drawer, so it passes
+# the source reference in SOURCE_COMMIT instead of letting HEAD mislead.
+if [ -n "${SOURCE_COMMIT:-}" ]; then
+  NOTES="${NOTES}"$'\n\n'"Source: ${SOURCE_COMMIT}"
+elif command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
   NOTES="${NOTES}"$'\n\n'"Source commit: $(git rev-parse --short HEAD) (private repository)."
 fi
 

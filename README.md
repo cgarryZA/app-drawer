@@ -58,6 +58,24 @@ here is sensitive, so a leak of that token costs an unwanted APK upload to a
 public repo and nothing else - which is the point of scoping it narrowly
 rather than reusing a broad token.
 
+### Publishing with only `git push`
+
+A session with push access but no `gh` or token (a cloud Claude session, say)
+pushes a branch named `publish/<app>/<version>` that adds `incoming/<app>.apk`.
+`.github/workflows/publish-from-branch.yml` runs `scripts/publish.sh` with this
+repo's own token, dispatches the page rebuild, and deletes the branch:
+
+```bash
+git checkout -b publish/bin-beacon/0.1.2 origin/main
+mkdir -p incoming && cp app-release.apk incoming/bin-beacon.apk
+git add -f incoming/bin-beacon.apk
+git commit -m "bin-beacon 0.1.2 from christiangarry-platform@<sha>"   # becomes the release's Source line
+git push origin publish/bin-beacon/0.1.2
+```
+
+The APK never lands on `main`. The page rebuild is dispatched explicitly
+because a release created with `GITHUB_TOKEN` does not fire release events.
+
 ## Installing on Android
 
 These are not on Google Play, so Android asks for permission the first time:
