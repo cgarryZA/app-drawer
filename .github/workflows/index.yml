@@ -1,0 +1,42 @@
+name: Rebuild download page
+
+# Regenerates docs/index.html from this repository's releases, so publishing an
+# app is one `gh release upload` and nothing else. GitHub-hosted runners are
+# free on public repositories, so unlike the private platform repo this costs
+# no Actions budget.
+
+on:
+  release:
+    types: [published, edited, deleted, released, unpublished]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: index
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate docs/index.html
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/build_index.py
+
+      - name: Commit if it changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/index.html; then
+            echo "no change"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          git commit -m "chore: rebuild download page from releases"
+          git push
